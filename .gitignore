@@ -118,6 +118,6 @@ dist
 # C++
 *.dSYM
 /logcat.txt
-/main
+/build
 .DS_Store
 /boost_*
