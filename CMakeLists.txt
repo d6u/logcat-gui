@@ -7,5 +7,5 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 add_executable(main src/main.cpp)
 
-target_include_directories(main PUBLIC "ENG{HOME}/homebrew/include")
-target_link_libraries(main "ENG{HOME}/homebrew/Cellar/folly/2021.02.08.00/lib/libfolly.dylib")
+target_include_directories(main PUBLIC "$ENV{HOME}/homebrew/include")
+target_link_libraries(main "$ENV{HOME}/homebrew/Cellar/folly/2021.02.08.00/lib/libfolly.dylib")
