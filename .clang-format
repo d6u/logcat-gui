@@ -66,7 +66,7 @@ ForEachMacros:
   - foreach
   - Q_FOREACH
   - BOOST_FOREACH
-IncludeBlocks:   Preserve
+IncludeBlocks:   Regroup
 IncludeCategories:
   - Regex:           '^"(llvm|llvm-c|clang|clang-c)/'
     Priority:        2
@@ -134,4 +134,3 @@ TabWidth:        8
 UseCRLF:         false
 UseTab:          Never
 ...
-
