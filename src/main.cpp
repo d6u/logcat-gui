@@ -12,7 +12,8 @@
 // #include <unordered_set>
 // #include <vector>
 
-// using namespace std;
+#include "signal_handler.h"
+
 using namespace folly;
 
 void outputLines(int fd) {
@@ -31,21 +32,6 @@ void outputLines(int fd) {
   delete line_buf;
   fclose(file_handle);
 }
-
-class SignalHandler : public AsyncSignalHandler {
-public:
-  SignalHandler(EventBase *eb, std::shared_ptr<Subprocess> proc)
-      : AsyncSignalHandler(eb), proc_(proc) {}
-
-  void signalReceived(int /* signum */) noexcept override {
-    std::cout << std::endl << "Stopping process..." << std::endl;
-    getEventBase()->terminateLoopSoon();
-    proc_->terminate();
-  }
-
-private:
-  std::shared_ptr<Subprocess> proc_;
-};
 
 int main(int argc, char *argv[]) {
   auto adb_proc = std::make_shared<Subprocess>(
