@@ -11,7 +11,6 @@ file(GLOB SOURCES
 
 add_executable(main ${SOURCES})
 
-target_include_directories(main PUBLIC "$ENV{HOME}/homebrew/include")
-
-target_link_libraries(main 
-  "$ENV{HOME}/homebrew/Cellar/folly/2021.02.08.00/lib/libfolly.dylib")
+find_package(Curses REQUIRED)
+target_include_directories(main PUBLIC $ENV{HOME}/homebrew/include)
+target_link_libraries(main $ENV{HOME}/homebrew/Cellar/folly/2021.02.08.00/lib/libfolly.dylib ${CURSES_LIBRARIES})

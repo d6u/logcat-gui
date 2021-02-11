@@ -1,22 +1,23 @@
+#include "renderer.h"
+#include "signal_handler.h"
+
+#include <algorithm>
 #include <folly/Subprocess.h>
 #include <folly/io/async/AsyncSignalHandler.h>
 #include <folly/io/async/EventBase.h>
 #include <iostream>
-// #include <ncurses.h>
-// #include <algorithm>
-// #include <istream>
-// #include <regex>
-// #include <sstream>
-// #include <string>
-// #include <unordered_map>
-// #include <unordered_set>
-// #include <vector>
+#include <istream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
-#include "signal_handler.h"
-
+using namespace std;
 using namespace folly;
 
-void outputLines(int fd) {
+void outputLines(int fd, shared_ptr<Renderer> renderer) {
   FILE *file_handle = fdopen(fd, "r");
 
   char *line_buf = nullptr;
@@ -24,8 +25,8 @@ void outputLines(int fd) {
   ssize_t line_size = getline(&line_buf, &line_buf_size, file_handle);
 
   while (line_size >= 0) {
-    printf("line: chars=%06zd, buf size=%06zu, contents: %s", line_size,
-           line_buf_size, line_buf);
+    string line(line_buf);
+    renderer->renderLogLine(line);
     line_size = getline(&line_buf, &line_buf_size, file_handle);
   }
 
@@ -36,7 +37,7 @@ void outputLines(int fd) {
 int main(int argc, char *argv[]) {
   auto adb_proc = std::make_shared<Subprocess>(
       std::vector<std::string>{"adb", "-s", "emulator-5554", "logcat", "-b",
-                               "all", "-T", "10"},
+                               "all", "-v", "long", "-T", "100"},
       Subprocess::Options().pipeStdout().usePath());
 
   auto thread = std::thread([adb_proc]() {
@@ -46,7 +47,9 @@ int main(int argc, char *argv[]) {
     eventBase.loopForever();
   });
 
-  outputLines(adb_proc->stdoutFd());
+  auto renderer = std::make_shared<Renderer>();
+
+  outputLines(adb_proc->stdoutFd(), renderer);
 
   adb_proc->wait();
   thread.join();
