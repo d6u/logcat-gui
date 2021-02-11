@@ -13,8 +13,15 @@
 using namespace std;
 
 const regex kHeaderRegex(
-    "\\[ (\\d\\d-\\d\\d) (\\d\\d:\\d\\d:\\d\\d\\.\\d\\d\\d) +(\\d+): *(\\d+) (\\w)/(.+?) +\\][\\S\\s]*");
+    "\\[ (\\d\\d-\\d\\d) (\\d\\d:\\d\\d:\\d\\d\\.\\d\\d\\d) +(\\d+): *(\\d+) (\\w)/(.+?) +\\]");
 const string kDividerPrefix("--------- beginning of");
+
+void rtrim(std::string &s) {
+  s.erase(std::find_if(s.rbegin(), s.rend(),
+                       [](unsigned char ch) { return !std::isspace(ch); })
+              .base(),
+          s.end());
+}
 
 const unordered_map<string, int> kLevelRowMap = {
     {"V", 0}, {"D", 1}, {"I", 2}, {"W", 3}, {"E", 4}, {"F", 5},
@@ -107,6 +114,8 @@ Renderer::Renderer() {
 }
 
 void Renderer::renderLogLine(string line) {
+  rtrim(line);
+
   if (line.rfind(kDividerPrefix, 0) == 0) {
     return;
   }
