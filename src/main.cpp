@@ -35,10 +35,16 @@ void outputLines(int fd, shared_ptr<Renderer> renderer) {
 }
 
 int main(int argc, char *argv[]) {
+  vector<string> cmd = {"adb", "logcat", "-b", "all",
+                        "-v",  "long",   "-T", "100"};
+
+  // Apply additional adb arguments
+  for (int i = 1; i < argc; i++) {
+    cmd.insert(cmd.begin() + i, string(argv[i]));
+  }
+
   auto adb_proc = std::make_shared<Subprocess>(
-      std::vector<std::string>{"adb", "-s", "emulator-5554", "logcat", "-b",
-                               "all", "-v", "long", "-T", "100"},
-      Subprocess::Options().pipeStdout().usePath());
+      cmd, Subprocess::Options().pipeStdout().usePath());
 
   auto thread = std::thread([adb_proc]() {
     EventBase eventBase;
