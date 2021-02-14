@@ -1,17 +1,11 @@
 #include "renderer.h"
 #include "signal_handler.h"
 
-#include <algorithm>
 #include <folly/Subprocess.h>
 #include <folly/io/async/AsyncSignalHandler.h>
 #include <folly/io/async/EventBase.h>
-#include <iostream>
-#include <istream>
 #include <memory>
-#include <sstream>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 using namespace std;
@@ -52,6 +46,7 @@ int main(int argc, char *argv[]) {
   });
 
   auto renderer = std::make_shared<Renderer>();
+  renderer->init();
 
   outputLines(adb_proc->stdoutFd(), renderer);
 

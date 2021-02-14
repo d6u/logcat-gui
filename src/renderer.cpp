@@ -25,13 +25,6 @@ const regex kHeaderRegex(
 // "--------- beginning of main\n"
 const regex kDividerPrefix("--------- beginning of[\\S\\s]*");
 
-// void rtrim(std::string &s) {
-//   s.erase(std::find_if(s.rbegin(), s.rend(),
-//                        [](unsigned char ch) { return !std::isspace(ch); })
-//               .base(),
-//           s.end());
-// }
-
 const unordered_map<string, int> kLevelRowMap = {
     {"V", 0}, {"D", 1}, {"I", 2}, {"W", 3}, {"E", 4}, {"F", 5},
 };
@@ -43,16 +36,10 @@ bool Compare(pair<string, int> &a, pair<string, int> &b) {
 string ConcatLines(vector<string> lines) {
   string log;
   for (size_t i = 0; i < lines.size(); i++) {
-    if (i < lines.size() - 2) {
-      log += lines[i];
-      log += "\n";
-    } else if (i == lines.size() - 2) {
-      log += lines[i];
+    if (i < lines.size() - 1) {
+      log += lines[i] + "\n";
     } else {
-      if (!lines[i].empty()) {
-        log += "\n";
-        log += lines[i];
-      }
+      log += lines[i];
     }
   }
   return log;
@@ -90,7 +77,9 @@ void SetLogColor(WINDOW *win, string level) {
   }
 }
 
-Renderer::Renderer() {
+Renderer::Renderer() {}
+
+void Renderer::init() {
   initscr();
 
   start_color();
@@ -124,7 +113,12 @@ Renderer::Renderer() {
 
 void Renderer::renderLogLine(char *line_buf) {
   string line(line_buf);
-  boost::algorithm::trim(line);
+  boost::algorithm::trim(line); // Remove newline
+
+  // Skip empty lines
+  if (line.empty()) {
+    return;
+  }
 
   // Skip divider lines
   if (regex_match(line, kDividerPrefix)) {

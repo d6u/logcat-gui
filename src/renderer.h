@@ -8,6 +8,7 @@ using namespace std;
 class Renderer {
 public:
   Renderer();
+  void init();
   void renderLogLine(char *line_buf);
   void stop();
 
