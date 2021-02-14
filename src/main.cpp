@@ -25,8 +25,7 @@ void outputLines(int fd, shared_ptr<Renderer> renderer) {
   ssize_t line_size = getline(&line_buf, &line_buf_size, file_handle);
 
   while (line_size >= 0) {
-    string line(line_buf);
-    renderer->renderLogLine(line);
+    renderer->renderLogLine(line_buf);
     line_size = getline(&line_buf, &line_buf_size, file_handle);
   }
 
@@ -35,8 +34,7 @@ void outputLines(int fd, shared_ptr<Renderer> renderer) {
 }
 
 int main(int argc, char *argv[]) {
-  vector<string> cmd = {"adb", "logcat", "-b", "all",
-                        "-v",  "long",   "-T", "100"};
+  vector<string> cmd = {"adb", "logcat", "-v", "long", "-T", "100"};
 
   // Apply additional adb arguments
   for (int i = 1; i < argc; i++) {
