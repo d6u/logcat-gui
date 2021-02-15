@@ -12,17 +12,19 @@ using namespace std;
 using namespace folly;
 
 int main(int argc, char *argv[]) {
-  vector<string> cmd = {"adb", "logcat", "-v", "long", "-T", "100"};
+  vector<string> cmd = {"adb", "logcat", "-v", "long", "-T", "1000"};
 
+  int i = 1;
   bool is_debug = false;
 
   if (argc > 1 && strcmp(argv[1], "-D") == 0) {
     is_debug = true;
+    i = 2;
   }
 
-  // Apply additional adb arguments
-  for (int i = 2; i < argc; i++) {
-    cmd.insert(cmd.begin() + i, string(argv[i]));
+  vector<string> filters;
+  for (; i < argc; i++) {
+    filters.push_back(string(argv[i]));
   }
 
   auto adb_proc = std::make_shared<Subprocess>(
@@ -30,7 +32,7 @@ int main(int argc, char *argv[]) {
 
   auto renderer = std::make_shared<Renderer>(is_debug);
   renderer->init();
-  renderer->start(adb_proc);
+  renderer->start(adb_proc, filters);
   renderer->stop();
 
   adb_proc->terminate();

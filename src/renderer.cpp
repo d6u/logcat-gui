@@ -1,5 +1,6 @@
 #include "renderer.h"
 
+#include <algorithm>
 #include <boost/algorithm/string/trim.hpp>
 #include <fcntl.h>
 #include <folly/Subprocess.h>
@@ -15,7 +16,7 @@
 #include <unordered_set>
 #include <vector>
 
-#define TAG_WIN_WIDTH 50
+#define TAG_WIN_WIDTH 60
 #define DEBUG_WIN_HEIGHT 50
 #define READ_BUF_SIZE 200
 
@@ -34,12 +35,25 @@ const regex kDividerPrefix("--------- beginning of[\\S\\s]*");
 
 const string kNewline = "\n";
 
-const unordered_map<string, int> kLevelRowMap = {
-    {"V", 0}, {"D", 1}, {"I", 2}, {"W", 3}, {"E", 4}, {"F", 5},
+enum class TagFilterType { kInclude, kUnspecified };
+
+// Cannot use const on field, because sort() requires struct to be move
+// assignable
+struct Tag {
+  TagFilterType type;
+  string name;
+  int count;
 };
 
-bool Compare(pair<string, int> &a, pair<string, int> &b) {
-  return a.second > b.second;
+bool Compare(const Tag &a, const Tag &b) {
+  if (a.type == TagFilterType::kInclude && b.type != TagFilterType::kInclude) {
+    return true;
+  } else if (a.type != TagFilterType::kInclude &&
+             b.type == TagFilterType::kInclude) {
+    return false;
+  } else {
+    return a.count > b.count;
+  }
 }
 
 string ConcatLines(vector<string> lines) {
@@ -127,7 +141,7 @@ void Renderer::init() {
   scrollok(win_log_list_, true);
 }
 
-void Renderer::start(std::shared_ptr<Subprocess> proc) {
+void Renderer::start(std::shared_ptr<Subprocess> proc, vector<string> filters) {
   int fd = proc->stdoutFd();
 
   // Config fd to non-blocking
@@ -172,7 +186,7 @@ void Renderer::start(std::shared_ptr<Subprocess> proc) {
       while ((pos = multi_lines.find(kNewline)) != string::npos) {
         // Don't need to trim newline because we split by newline
         string line = multi_lines.substr(0, pos);
-        renderLine(line);
+        renderLine(line, filters);
         renderBorderAndRefresh();
         multi_lines.erase(0, pos + kNewline.size());
       }
@@ -220,7 +234,7 @@ void Renderer::maybeHandleWindowResize() {
   }
 }
 
-void Renderer::renderLine(string line) {
+void Renderer::renderLine(string line, vector<string> filters) {
   // Skip empty lines
   if (line.empty()) {
     return;
@@ -243,34 +257,47 @@ void Renderer::renderLine(string line) {
     // Print log list
     // ----------
 
-    const string log = ConcatLines(lines_);
+    if (filters.size() == 0 ||
+        find(filters.begin(), filters.end(), tag_) != filters.end()) {
+      const string log = ConcatLines(lines_);
 
-    SetTagColor(win_log_list_, level_);
-    wprintw(win_log_list_, "\n%s:%s", tag_.c_str(), level_.c_str());
+      SetTagColor(win_log_list_, level_);
+      wprintw(win_log_list_, "\n%s:%s", tag_.c_str(), level_.c_str());
 
-    SetLogColor(win_log_list_, level_);
-    wprintw(win_log_list_, " %s", log.c_str());
+      SetLogColor(win_log_list_, level_);
+      wprintw(win_log_list_, " %s", log.c_str());
 
-    wattrset(win_log_list_, COLOR_PAIR(1));
-    wrefresh(win_log_list_);
+      wattrset(win_log_list_, COLOR_PAIR(1));
+      wrefresh(win_log_list_);
+    }
 
     // Print tag list
     // ----------
 
-    vector<pair<string, int>> sorted;
+    vector<Tag> tags;
     for (const auto &it : tag_count_) {
-      sorted.push_back(it);
+      bool is_top =
+          find(filters.begin(), filters.end(), it.first) == filters.end();
+
+      tags.push_back(
+          Tag{is_top ? TagFilterType::kUnspecified : TagFilterType::kInclude,
+              it.first, it.second});
     }
 
-    sort(sorted.begin(), sorted.end(), Compare);
+    sort(tags.begin(), tags.end(), Compare);
 
-    for (int i = 0; i < sorted.size(); i++) {
-      if (i > win_tag_list_row() - 2) {
+    for (int i = 0; i < tags.size(); i++) {
+      if (i > win_tag_list_row() - 2) { // Exclude top and bottom border width
         break;
       }
-      const auto pair = sorted[i];
-      mvwprintw(win_tag_list_, i + 1, 1, "%s : %d\n", pair.first.c_str(),
-                pair.second);
+      auto tag = tags[i];
+      if (tag.type == TagFilterType::kInclude) {
+        mvwprintw(win_tag_list_, i + 1, 1, "+ %s : %d\n", tag.name.c_str(),
+                  tag.count);
+      } else {
+        mvwprintw(win_tag_list_, i + 1, 1, "%s : %d\n", tag.name.c_str(),
+                  tag.count);
+      }
     }
   }
 

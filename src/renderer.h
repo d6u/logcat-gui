@@ -11,7 +11,7 @@ class Renderer {
 public:
   Renderer(bool is_debug = false);
   void init();
-  void start(std::shared_ptr<Subprocess> proc);
+  void start(std::shared_ptr<Subprocess> proc, vector<string> filters);
   void stop();
 
 private:
@@ -42,6 +42,6 @@ private:
   vector<string> lines_;
 
   void maybeHandleWindowResize();
-  void renderLine(string line);
+  void renderLine(string line, vector<string> filters);
   void renderBorderAndRefresh();
 };
