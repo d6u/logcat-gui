@@ -22,6 +22,8 @@ private:
   WINDOW *win_log_list_;
   WINDOW *win_tag_list_;
 
+  string cache_line_ = "";
+
   unordered_map<string, int> tag_count_;
   string date_;
   string level_;

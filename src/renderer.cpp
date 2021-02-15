@@ -1,6 +1,7 @@
 #include "renderer.h"
 
 #include <boost/algorithm/string/trim.hpp>
+#include <fcntl.h>
 #include <folly/Subprocess.h>
 #include <folly/json.h>
 #include <iostream>
@@ -26,6 +27,8 @@ const regex kHeaderRegex(
 
 // "--------- beginning of main\n"
 const regex kDividerPrefix("--------- beginning of[\\S\\s]*");
+
+const string kNewline = "\n";
 
 const unordered_map<string, int> kLevelRowMap = {
     {"V", 0}, {"D", 1}, {"I", 2}, {"W", 3}, {"E", 4}, {"F", 5},
@@ -120,35 +123,58 @@ void Renderer::init() {
 }
 
 void Renderer::start(std::shared_ptr<Subprocess> proc) {
-  FILE *file_handle = fdopen(proc->stdoutFd(), "r");
+  int fd = proc->stdoutFd();
 
-  char *line_buf = nullptr;
-  size_t line_buf_size = 0;
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    return;
+  }
 
   while (true) {
-    int ch = getch();
-
-    if (ch == KEY_F(1)) { // Use F1 as exit
+    switch (getch()) {
+    case KEY_F(1): // Use F1 as exit
       return;
-    } else if (ch == KEY_RESIZE) {
+    case KEY_RESIZE:
       maybeHandleWindowResize();
     }
 
-    ssize_t line_size = getline(&line_buf, &line_buf_size, file_handle);
+    char line_buf[10000];
+    ssize_t line_size = read(fd, line_buf, 10000);
 
-    if (line_size > 0) {
-      string line(line_buf);
-      boost::algorithm::trim(line); // Trim newline
-      renderLine(line);
+    switch (line_size) {
+    case -1: // No data yet
+      if (errno == EAGAIN) {
+        wattrset(win_tag_list_, COLOR_PAIR(1));
+        wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
+        wrefresh(win_tag_list_);
+        wrefresh(win_log_list_);
+        break;
+      } else {
+        return;
+      }
+    case 0: // EOF
+      return;
+    default:
+      string multi_lines = cache_line_ + string(line_buf);
+      size_t pos = multi_lines.find(kNewline);
+      while (pos != string::npos) {
+        string line = multi_lines.substr(0, pos);
+        boost::algorithm::trim(line); // Trim newline
+
+        renderLine(line);
+
+        wattrset(win_tag_list_, COLOR_PAIR(1));
+        wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
+        wrefresh(win_tag_list_);
+        wrefresh(win_log_list_);
+
+        multi_lines.erase(0, pos + kNewline.size());
+        pos = multi_lines.find(kNewline);
+      }
+
+      cache_line_ = multi_lines;
     }
-
-    wattrset(win_tag_list_, COLOR_PAIR(1));
-    wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
-    wrefresh(win_tag_list_);
   }
-
-  delete line_buf;
-  fclose(file_handle);
 }
 
 void Renderer::stop() { endwin(); }
@@ -158,17 +184,19 @@ void Renderer::maybeHandleWindowResize() {
   int new_col;
   getmaxyx(stdscr, new_row, new_col);
 
-  if (new_row != row_ || new_col != col_) {
-    row_ = new_row;
-    col_ = new_col;
-    win_tag_list_row_ = row_;
-    win_tag_list_col_ = min(50, col_ / 2);
-
-    wresize(win_log_list_, row_, col_ - win_tag_list_col_);
-
-    mvwin(win_tag_list_, 0, col_ - win_tag_list_col_);
-    wresize(win_tag_list_, win_tag_list_row_, win_tag_list_col_);
+  if (new_row == row_ && new_col == col_) {
+    return;
   }
+
+  row_ = new_row;
+  col_ = new_col;
+  win_tag_list_row_ = row_;
+  win_tag_list_col_ = min(50, col_ / 2);
+
+  wresize(win_log_list_, row_, col_ - win_tag_list_col_);
+
+  mvwin(win_tag_list_, 0, col_ - win_tag_list_col_);
+  wresize(win_tag_list_, win_tag_list_row_, win_tag_list_col_);
 }
 
 void Renderer::renderLine(string line) {
