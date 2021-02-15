@@ -1,9 +1,11 @@
 #include "renderer.h"
 
 #include <boost/algorithm/string/trim.hpp>
+#include <folly/Subprocess.h>
 #include <folly/json.h>
 #include <iostream>
 #include <istream>
+#include <memory>
 #include <ncurses.h>
 #include <regex>
 #include <sstream>
@@ -80,8 +82,11 @@ void SetLogColor(WINDOW *win, string level) {
 Renderer::Renderer() {}
 
 void Renderer::init() {
+  // Start curses mode
   initscr();
+  clear();
 
+  // Start color
   start_color();
   init_pair(1, COLOR_WHITE, COLOR_BLACK);
   init_pair(2, COLOR_WHITE, COLOR_BLACK);
@@ -96,116 +101,141 @@ void Renderer::init() {
   init_pair(11, COLOR_WHITE, COLOR_MAGENTA);
   init_pair(12, COLOR_MAGENTA, COLOR_BLACK);
 
-  cbreak();
-  curs_set(0);
-  noecho();
+  cbreak();   // Disable terminal line buffering, and send signal to the program
+  noecho();   // Turn off echoing, i.e. user typed chars won't be displayed
+  timeout(0); // Calling getch won't block
+  keypad(stdscr, true); // Recognize F1 key, etc.
+  curs_set(0);          // Make cursor invisible
 
   getmaxyx(stdscr, row_, col_);
 
   win_tag_list_row_ = row_;
   win_tag_list_col_ = min(50, col_ / 2);
+
   win_log_list_ = newwin(row_, col_ - win_tag_list_col_, 0, 0);
   win_tag_list_ =
       newwin(win_tag_list_row_, win_tag_list_col_, 0, col_ - win_tag_list_col_);
 
-  scrollok(win_log_list_, 1);
+  scrollok(win_log_list_, true);
 }
 
-void Renderer::renderLogLine(char *line_buf) {
-  string line(line_buf);
-  boost::algorithm::trim(line); // Remove newline
+void Renderer::start(std::shared_ptr<Subprocess> proc) {
+  FILE *file_handle = fdopen(proc->stdoutFd(), "r");
 
-  // Skip empty lines
-  if (line.empty()) {
-    return;
-  }
+  char *line_buf = nullptr;
+  size_t line_buf_size = 0;
 
-  // Skip divider lines
-  if (regex_match(line, kDividerPrefix)) {
-    return;
-  }
+  while (true) {
+    int ch = getch();
 
-  // Cache non-header lines
-  smatch result;
-  if (!regex_match(line, result, kHeaderRegex)) {
-    lines_.push_back(line);
-    return;
-  }
+    if (ch == KEY_F(1)) {
+      // Use F1 as exit
+      return;
+    } else if (ch == KEY_RESIZE) {
+      // Handle terminal window resizing
+      // ----------
 
-  if (!date_.empty()) {
+      int new_row;
+      int new_col;
+      getmaxyx(stdscr, new_row, new_col);
 
-    // Handle terminal window resizing
-    // ----------
+      if (new_row != row_ || new_col != col_) {
+        row_ = new_row;
+        col_ = new_col;
+        win_tag_list_row_ = row_;
+        win_tag_list_col_ = min(50, col_ / 2);
 
-    int new_row;
-    int new_col;
-    getmaxyx(stdscr, new_row, new_col);
+        wresize(win_log_list_, row_, col_ - win_tag_list_col_);
 
-    if (new_row != row_ || new_col != col_) {
-      row_ = new_row;
-      col_ = new_col;
-      win_tag_list_row_ = row_;
-      win_tag_list_col_ = min(50, col_ / 2);
-      wresize(win_log_list_, row_, col_ - win_tag_list_col_);
-      wresize(win_tag_list_, win_tag_list_row_, win_tag_list_col_);
-      mvwin(win_tag_list_, 0, col_ - win_tag_list_col_);
-      wclear(win_tag_list_);
-    }
-
-    // Print log list
-    // ----------
-
-    const string log = ConcatLines(lines_);
-
-    SetTagColor(win_log_list_, level_);
-    wprintw(win_log_list_, "%s:%s", tag_.c_str(), level_.c_str());
-
-    SetLogColor(win_log_list_, level_);
-    wprintw(win_log_list_, " %s\n", log.c_str());
-
-    wattrset(win_log_list_, COLOR_PAIR(1));
-    wrefresh(win_log_list_);
-
-    // Print tag list
-    // ----------
-
-    vector<pair<string, int>> sorted;
-    for (const auto &it : tag_count_) {
-      sorted.push_back(it);
-    }
-
-    sort(sorted.begin(), sorted.end(), Compare);
-
-    for (int i = 0; i < sorted.size(); i++) {
-      if (i > win_tag_list_row_ - 2) {
-        break;
+        mvwin(win_tag_list_, 0, col_ - win_tag_list_col_);
+        wresize(win_tag_list_, win_tag_list_row_, win_tag_list_col_);
       }
-      const auto pair = sorted[i];
-      mvwprintw(win_tag_list_, i + 1, 1, "%s : %d\n", pair.first.c_str(),
-                pair.second);
     }
 
-    wattrset(win_tag_list_, COLOR_PAIR(1));
-    wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
-    wrefresh(win_tag_list_);
+    ssize_t line_size = getline(&line_buf, &line_buf_size, file_handle);
+
+    if (line_size > 0) {
+      string line(line_buf);
+      boost::algorithm::trim(line); // Trim newline
+
+      // Skip empty lines
+      if (line.empty()) {
+        continue;
+      }
+
+      // Skip divider lines
+      if (regex_match(line, kDividerPrefix)) {
+        continue;
+      }
+
+      // Cache non-header lines
+      smatch result;
+      if (!regex_match(line, result, kHeaderRegex)) {
+        lines_.push_back(line);
+        continue;
+      }
+
+      if (!date_.empty()) {
+
+        // Print log list
+        // ----------
+
+        const string log = ConcatLines(lines_);
+
+        SetTagColor(win_log_list_, level_);
+        wprintw(win_log_list_, "%s:%s", tag_.c_str(), level_.c_str());
+
+        SetLogColor(win_log_list_, level_);
+        wprintw(win_log_list_, " %s\n", log.c_str());
+
+        wattrset(win_log_list_, COLOR_PAIR(1));
+        wrefresh(win_log_list_);
+
+        // Print tag list
+        // ----------
+
+        vector<pair<string, int>> sorted;
+        for (const auto &it : tag_count_) {
+          sorted.push_back(it);
+        }
+
+        sort(sorted.begin(), sorted.end(), Compare);
+
+        for (int i = 0; i < sorted.size(); i++) {
+          if (i > win_tag_list_row_ - 2) {
+            break;
+          }
+          const auto pair = sorted[i];
+          mvwprintw(win_tag_list_, i + 1, 1, "%s : %d\n", pair.first.c_str(),
+                    pair.second);
+        }
+
+        wattrset(win_tag_list_, COLOR_PAIR(1));
+        wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
+        wrefresh(win_tag_list_);
+      }
+
+      // Extract metadata for new lines
+      // ----------
+
+      date_ = result[1].str();
+      timestamp_ = result[2].str();
+      pid_ = result[3].str();
+      tid_ = result[4].str();
+      level_ = result[5].str();
+      tag_ = result[6].str();
+      lines_.clear();
+
+      if (tag_count_.count(tag_) > 0) {
+        tag_count_[tag_]++;
+      } else {
+        tag_count_[tag_] = 1;
+      }
+    }
   }
 
-  // Extract metadata for new lines
-  // ----------
-
-  date_ = result[1].str();
-  timestamp_ = result[2].str();
-  pid_ = result[3].str();
-  tid_ = result[4].str();
-  level_ = result[5].str();
-  tag_ = result[6].str();
-  lines_.clear();
-
-  if (tag_count_.count(tag_) > 0) {
-    tag_count_[tag_]++;
-  } else {
-    tag_count_[tag_] = 1;
-  }
+  delete line_buf;
+  fclose(file_handle);
 }
 
-void Renderer::stop() {}
+void Renderer::stop() { endwin(); }

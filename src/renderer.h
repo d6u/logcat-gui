@@ -1,15 +1,17 @@
+#include <folly/Subprocess.h>
 #include <ncurses.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 using namespace std;
+using namespace folly;
 
 class Renderer {
 public:
   Renderer();
   void init();
-  void renderLogLine(char *line_buf);
+  void start(std::shared_ptr<Subprocess> proc);
   void stop();
 
 private:
