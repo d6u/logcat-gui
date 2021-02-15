@@ -15,6 +15,10 @@
 #include <unordered_set>
 #include <vector>
 
+#define TAG_WIN_WIDTH 50
+#define DEBUG_WIN_HEIGHT 50
+#define READ_BUF_SIZE 200
+
 using namespace std;
 using namespace folly;
 
@@ -113,15 +117,20 @@ void Renderer::init() {
   getmaxyx(stdscr, row_, col_);
 
   win_tag_list_row_ = row_;
-  win_tag_list_col_ = min(50, col_ / 2);
+  win_tag_list_col_ = min(TAG_WIN_WIDTH, col_ / 2);
 
-  win_log_list_ = newwin(row_ - (is_debug_ ? min(20, row_ / 2) : 0),
-                         col_ - win_tag_list_col_, 0, 0);
+  win_log_list_ =
+      newwin(row_ - (is_debug_ ? min(DEBUG_WIN_HEIGHT, row_ / 2) : 0),
+             col_ - win_tag_list_col_, 0, 0);
+
   win_tag_list_ =
       newwin(win_tag_list_row_, win_tag_list_col_, 0, col_ - win_tag_list_col_);
+
   if (is_debug_) {
-    win_debug_ = newwin(min(20, row_ / 2), col_ - win_tag_list_col_,
-                        row_ - min(20, row_ / 2), 0);
+    win_debug_ =
+        newwin(min(DEBUG_WIN_HEIGHT, row_ / 2), col_ - win_tag_list_col_,
+               row_ - min(DEBUG_WIN_HEIGHT, row_ / 2), 0);
+
     scrollok(win_debug_, true);
   }
 
@@ -131,6 +140,7 @@ void Renderer::init() {
 void Renderer::start(std::shared_ptr<Subprocess> proc) {
   int fd = proc->stdoutFd();
 
+  // Config fd to non-blocking
   int flags = fcntl(fd, F_GETFL, 0);
   if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
     return;
@@ -142,34 +152,43 @@ void Renderer::start(std::shared_ptr<Subprocess> proc) {
       return;
     case KEY_RESIZE:
       maybeHandleWindowResize();
+      break;
     }
 
-    char line_buf[10000];
-    ssize_t line_size = read(fd, line_buf, 10000);
+    char line_buf[READ_BUF_SIZE];
+    ssize_t line_size = read(fd, line_buf, READ_BUF_SIZE);
 
     switch (line_size) {
     case 0: // EOF
       return;
-    case -1: // No data yet
-      if (errno != EAGAIN) {
+    case -1:
+      if (errno != EAGAIN) { // No data yet
         return;
       }
       renderBorderAndRefresh();
       break;
     default:
-      string multi_lines = cache_line_ + string(line_buf);
-      size_t pos = multi_lines.find(kNewline);
+      if (is_debug_) {
+        wprintw(win_debug_, "%d - cache_line_ = %s\n", debug_counter_++,
+                cache_line_.c_str());
+        wprintw(win_debug_, "%d - line_buf = %s\n", debug_counter_++, line_buf);
+      }
 
-      while (pos != string::npos) {
+      // Must use line_size to construct string, otherwise it will contain
+      // buffer from last read.
+      string multi_lines = cache_line_ + string(line_buf, line_size);
+      size_t pos;
+
+      while ((pos = multi_lines.find(kNewline)) != string::npos) {
+        // Don't need to trim newline because we split by newline
         string line = multi_lines.substr(0, pos);
-        boost::algorithm::trim(line); // Trim newline
         renderLine(line);
         renderBorderAndRefresh();
         multi_lines.erase(0, pos + kNewline.size());
-        pos = multi_lines.find(kNewline);
       }
 
       cache_line_ = multi_lines;
+      break;
     }
   }
 }
@@ -188,7 +207,7 @@ void Renderer::maybeHandleWindowResize() {
   row_ = new_row;
   col_ = new_col;
   win_tag_list_row_ = row_;
-  win_tag_list_col_ = min(50, col_ / 2);
+  win_tag_list_col_ = min(TAG_WIN_WIDTH, col_ / 2);
 
   wresize(win_log_list_, row_, col_ - win_tag_list_col_);
 

@@ -16,6 +16,7 @@ public:
 
 private:
   const bool is_debug_;
+  int debug_counter_ = 0;
 
   int row_;
   int col_;
