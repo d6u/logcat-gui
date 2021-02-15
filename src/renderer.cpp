@@ -116,24 +116,14 @@ void Renderer::init() {
 
   getmaxyx(stdscr, row_, col_);
 
-  win_tag_list_row_ = row_;
-  win_tag_list_col_ = min(TAG_WIN_WIDTH, col_ / 2);
-
-  win_log_list_ =
-      newwin(row_ - (is_debug_ ? min(DEBUG_WIN_HEIGHT, row_ / 2) : 0),
-             col_ - win_tag_list_col_, 0, 0);
-
+  win_log_list_ = newwin(win_log_list_row(), win_log_list_col(), 0, 0);
   win_tag_list_ =
-      newwin(win_tag_list_row_, win_tag_list_col_, 0, col_ - win_tag_list_col_);
-
+      newwin(win_tag_list_row(), win_tag_list_col(), 0, win_log_list_col());
   if (is_debug_) {
     win_debug_ =
-        newwin(min(DEBUG_WIN_HEIGHT, row_ / 2), col_ - win_tag_list_col_,
-               row_ - min(DEBUG_WIN_HEIGHT, row_ / 2), 0);
-
+        newwin(win_debug_row(), win_debug_col(), win_log_list_row(), 0);
     scrollok(win_debug_, true);
   }
-
   scrollok(win_log_list_, true);
 }
 
@@ -169,9 +159,9 @@ void Renderer::start(std::shared_ptr<Subprocess> proc) {
       break;
     default:
       if (is_debug_) {
-        wprintw(win_debug_, "%d - cache_line_ = %s\n", debug_counter_++,
+        wprintw(win_debug_, "\n%d\tcache_line_ = %s", debug_counter_++,
                 cache_line_.c_str());
-        wprintw(win_debug_, "%d - line_buf = %s\n", debug_counter_++, line_buf);
+        wprintw(win_debug_, "\n%d\tline_buf = %s", debug_counter_++, line_buf);
       }
 
       // Must use line_size to construct string, otherwise it will contain
@@ -195,6 +185,20 @@ void Renderer::start(std::shared_ptr<Subprocess> proc) {
 
 void Renderer::stop() { endwin(); }
 
+int Renderer::win_log_list_row() {
+  return row_ - (is_debug_ ? win_debug_row() : 0);
+}
+
+int Renderer::win_log_list_col() { return col_ - win_tag_list_col(); }
+
+int Renderer::win_tag_list_row() { return row_; }
+
+int Renderer::win_tag_list_col() { return min(TAG_WIN_WIDTH, col_ / 2); }
+
+int Renderer::win_debug_row() { return min(DEBUG_WIN_HEIGHT, row_ / 2); }
+
+int Renderer::win_debug_col() { return win_log_list_col(); }
+
 void Renderer::maybeHandleWindowResize() {
   int new_row;
   int new_col;
@@ -206,13 +210,14 @@ void Renderer::maybeHandleWindowResize() {
 
   row_ = new_row;
   col_ = new_col;
-  win_tag_list_row_ = row_;
-  win_tag_list_col_ = min(TAG_WIN_WIDTH, col_ / 2);
 
-  wresize(win_log_list_, row_, col_ - win_tag_list_col_);
-
-  mvwin(win_tag_list_, 0, col_ - win_tag_list_col_);
-  wresize(win_tag_list_, win_tag_list_row_, win_tag_list_col_);
+  wresize(win_log_list_, win_log_list_row(), win_log_list_col());
+  wresize(win_tag_list_, win_tag_list_row(), win_tag_list_col());
+  mvwin(win_tag_list_, 0, win_log_list_col());
+  if (is_debug_) {
+    wresize(win_debug_, win_debug_row(), win_debug_col());
+    mvwin(win_debug_, win_log_list_row(), 0);
+  }
 }
 
 void Renderer::renderLine(string line) {
@@ -241,10 +246,10 @@ void Renderer::renderLine(string line) {
     const string log = ConcatLines(lines_);
 
     SetTagColor(win_log_list_, level_);
-    wprintw(win_log_list_, "%s:%s", tag_.c_str(), level_.c_str());
+    wprintw(win_log_list_, "\n%s:%s", tag_.c_str(), level_.c_str());
 
     SetLogColor(win_log_list_, level_);
-    wprintw(win_log_list_, " %s\n", log.c_str());
+    wprintw(win_log_list_, " %s", log.c_str());
 
     wattrset(win_log_list_, COLOR_PAIR(1));
     wrefresh(win_log_list_);
@@ -260,7 +265,7 @@ void Renderer::renderLine(string line) {
     sort(sorted.begin(), sorted.end(), Compare);
 
     for (int i = 0; i < sorted.size(); i++) {
-      if (i > win_tag_list_row_ - 2) {
+      if (i > win_tag_list_row() - 2) {
         break;
       }
       const auto pair = sorted[i];

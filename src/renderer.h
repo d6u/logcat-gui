@@ -20,8 +20,12 @@ private:
 
   int row_;
   int col_;
-  int win_tag_list_row_;
-  int win_tag_list_col_;
+  int win_log_list_row();
+  int win_log_list_col();
+  int win_tag_list_row();
+  int win_tag_list_col();
+  int win_debug_row();
+  int win_debug_col();
   WINDOW *win_log_list_;
   WINDOW *win_tag_list_;
   WINDOW *win_debug_;
