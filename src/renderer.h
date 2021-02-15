@@ -9,18 +9,21 @@ using namespace folly;
 
 class Renderer {
 public:
-  Renderer();
+  Renderer(bool is_debug = false);
   void init();
   void start(std::shared_ptr<Subprocess> proc);
   void stop();
 
 private:
+  const bool is_debug_;
+
   int row_;
   int col_;
   int win_tag_list_row_;
   int win_tag_list_col_;
   WINDOW *win_log_list_;
   WINDOW *win_tag_list_;
+  WINDOW *win_debug_;
 
   string cache_line_ = "";
 
@@ -35,4 +38,5 @@ private:
 
   void maybeHandleWindowResize();
   void renderLine(string line);
+  void renderBorderAndRefresh();
 };

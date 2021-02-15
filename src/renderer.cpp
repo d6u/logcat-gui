@@ -82,7 +82,7 @@ void SetLogColor(WINDOW *win, string level) {
   }
 }
 
-Renderer::Renderer() {}
+Renderer::Renderer(bool is_debug) : is_debug_(is_debug) {}
 
 void Renderer::init() {
   // Start curses mode
@@ -106,7 +106,7 @@ void Renderer::init() {
 
   cbreak();   // Disable terminal line buffering, and send signal to the program
   noecho();   // Turn off echoing, i.e. user typed chars won't be displayed
-  timeout(0); // Calling getch won't block
+  timeout(0); // Make calling getch non-block
   keypad(stdscr, true); // Recognize F1 key, etc.
   curs_set(0);          // Make cursor invisible
 
@@ -115,9 +115,15 @@ void Renderer::init() {
   win_tag_list_row_ = row_;
   win_tag_list_col_ = min(50, col_ / 2);
 
-  win_log_list_ = newwin(row_, col_ - win_tag_list_col_, 0, 0);
+  win_log_list_ = newwin(row_ - (is_debug_ ? min(20, row_ / 2) : 0),
+                         col_ - win_tag_list_col_, 0, 0);
   win_tag_list_ =
       newwin(win_tag_list_row_, win_tag_list_col_, 0, col_ - win_tag_list_col_);
+  if (is_debug_) {
+    win_debug_ = newwin(min(20, row_ / 2), col_ - win_tag_list_col_,
+                        row_ - min(20, row_ / 2), 0);
+    scrollok(win_debug_, true);
+  }
 
   scrollok(win_log_list_, true);
 }
@@ -142,32 +148,23 @@ void Renderer::start(std::shared_ptr<Subprocess> proc) {
     ssize_t line_size = read(fd, line_buf, 10000);
 
     switch (line_size) {
-    case -1: // No data yet
-      if (errno == EAGAIN) {
-        wattrset(win_tag_list_, COLOR_PAIR(1));
-        wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
-        wrefresh(win_tag_list_);
-        wrefresh(win_log_list_);
-        break;
-      } else {
-        return;
-      }
     case 0: // EOF
       return;
+    case -1: // No data yet
+      if (errno != EAGAIN) {
+        return;
+      }
+      renderBorderAndRefresh();
+      break;
     default:
       string multi_lines = cache_line_ + string(line_buf);
       size_t pos = multi_lines.find(kNewline);
+
       while (pos != string::npos) {
         string line = multi_lines.substr(0, pos);
         boost::algorithm::trim(line); // Trim newline
-
         renderLine(line);
-
-        wattrset(win_tag_list_, COLOR_PAIR(1));
-        wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
-        wrefresh(win_tag_list_);
-        wrefresh(win_log_list_);
-
+        renderBorderAndRefresh();
         multi_lines.erase(0, pos + kNewline.size());
         pos = multi_lines.find(kNewline);
       }
@@ -268,5 +265,16 @@ void Renderer::renderLine(string line) {
     tag_count_[tag_]++;
   } else {
     tag_count_[tag_] = 1;
+  }
+}
+
+void Renderer::renderBorderAndRefresh() {
+  wattrset(win_tag_list_, COLOR_PAIR(1));
+  wborder(win_tag_list_, '|', '|', '-', '-', '+', '+', '+', '+');
+  wrefresh(win_tag_list_);
+  wrefresh(win_log_list_);
+  if (is_debug_) {
+    wborder(win_debug_, ' ', ' ', '-', ' ', '-', '-', ' ', ' ');
+    wrefresh(win_debug_);
   }
 }

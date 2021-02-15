@@ -14,15 +14,21 @@ using namespace folly;
 int main(int argc, char *argv[]) {
   vector<string> cmd = {"adb", "logcat", "-v", "long", "-T", "100"};
 
+  bool is_debug = false;
+
+  if (argc > 1 && strcmp(argv[1], "-D") == 0) {
+    is_debug = true;
+  }
+
   // Apply additional adb arguments
-  for (int i = 1; i < argc; i++) {
+  for (int i = 2; i < argc; i++) {
     cmd.insert(cmd.begin() + i, string(argv[i]));
   }
 
   auto adb_proc = std::make_shared<Subprocess>(
       cmd, Subprocess::Options().pipeStdout().usePath());
 
-  auto renderer = std::make_shared<Renderer>();
+  auto renderer = std::make_shared<Renderer>(is_debug);
   renderer->init();
   renderer->start(adb_proc);
   renderer->stop();
