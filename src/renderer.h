@@ -30,4 +30,7 @@ private:
   string tid_;
   string tag_;
   vector<string> lines_;
+
+  void maybeHandleWindowResize();
+  void renderLine(string line);
 };
